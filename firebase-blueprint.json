@@ -1,0 +1,127 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "A shoe or handbag product displayed in the Venezia Shoes storefront catalog.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique product identifier",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ref": {
+          "type": "string",
+          "description": "Optional product reference code",
+          "maxLength": 100
+        },
+        "name": {
+          "type": "string",
+          "description": "Optional Arabic product name",
+          "maxLength": 300
+        },
+        "frenchName": {
+          "type": "string",
+          "description": "Optional French subtitle",
+          "maxLength": 300
+        },
+        "category": {
+          "type": "string",
+          "description": "Product category",
+          "enum": ["bags", "sneakers", "loafers", "boots"]
+        },
+        "categoryLabel": {
+          "type": "string",
+          "description": "Arabic category label",
+          "maxLength": 100
+        },
+        "brand": {
+          "type": "string",
+          "description": "Optional brand name",
+          "maxLength": 100
+        },
+        "price": {
+          "type": "number",
+          "description": "Optional price in MAD (0 if not displayed)"
+        },
+        "image": {
+          "type": "string",
+          "description": "Product image URL or compressed data URL",
+          "maxLength": 900000
+        },
+        "badge": {
+          "type": "string",
+          "description": "Optional badge text",
+          "maxLength": 100
+        },
+        "sizes": {
+          "type": "string",
+          "description": "Optional sizes range",
+          "maxLength": 100
+        },
+        "colors": {
+          "type": "array",
+          "description": "Optional list of available colors"
+        },
+        "origin": {
+          "type": "string",
+          "description": "Optional origin",
+          "maxLength": 100
+        },
+        "boxQuantity": {
+          "type": "string",
+          "description": "Optional box quantity",
+          "maxLength": 100
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional product description",
+          "maxLength": 2000
+        },
+        "highlights": {
+          "type": "array",
+          "description": "Optional product highlights"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Timestamp in milliseconds for ordering"
+        }
+      },
+      "required": ["id", "category", "image"]
+    },
+    "StoreState": {
+      "title": "StoreState",
+      "description": "Global storefront configuration including store contact info and button visibility.",
+      "type": "object",
+      "properties": {
+        "nameAr": { "type": "string", "maxLength": 200 },
+        "nameEn": { "type": "string", "maxLength": 200 },
+        "tagline": { "type": "string", "maxLength": 300 },
+        "address": { "type": "string", "maxLength": 500 },
+        "phone1": { "type": "string", "maxLength": 60 },
+        "phone2": { "type": "string", "maxLength": 60 },
+        "whatsappNumber": { "type": "string", "maxLength": 60 },
+        "facebookName": { "type": "string", "maxLength": 200 },
+        "facebookUrl": { "type": "string", "maxLength": 500 },
+        "instagramHandle": { "type": "string", "maxLength": 200 },
+        "instagramUrl": { "type": "string", "maxLength": 500 },
+        "hours": { "type": "string", "maxLength": 300 },
+        "announcementText": { "type": "string", "maxLength": 500 },
+        "announcementVisible": { "type": "boolean" },
+        "adminPin": { "type": "string", "maxLength": 20 }
+      },
+      "required": ["nameAr", "nameEn", "whatsappNumber"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Public storefront catalog products synced across all visitors and devices."
+    },
+    "/storeConfig/{configId}": {
+      "schema": { "$ref": "#/entities/StoreState" },
+      "description": "Storefront configuration and button preferences."
+    }
+  }
+}

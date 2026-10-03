@@ -1,5 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Product, PRODUCTS as DEFAULT_PRODUCTS, STORE_INFO } from '../data/products';
+import {
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  where
+} from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { Product, STORE_INFO } from '../data/products';
 import { SiteButtonsConfig, StoreSettings, StoreContextType } from '../types/admin';
 
 const DEFAULT_BUTTONS: SiteButtonsConfig = {
@@ -33,7 +43,7 @@ const DEFAULT_BUTTONS: SiteButtonsConfig = {
 const DEFAULT_SETTINGS: StoreSettings = {
   nameAr: STORE_INFO.nameAr,
   nameEn: STORE_INFO.nameEn,
-  tagline: STORE_INFO.tagline,
+  tagline: '',
   address: STORE_INFO.address,
   phone1: STORE_INFO.phone1,
   phone2: STORE_INFO.phone2,
@@ -48,123 +58,188 @@ const DEFAULT_SETTINGS: StoreSettings = {
   adminPin: '1234'
 };
 
+function sanitizeProductPayload(id: string, p: Partial<Product>, existingCreatedAt?: number): Product {
+  const validCategories = ['bags', 'sneakers', 'loafers', 'boots'] as const;
+  const cat = validCategories.includes(p.category as any) ? (p.category as Product['category']) : 'bags';
+  return {
+    id: id.slice(0, 128).replace(/[^a-zA-Z0-9_-]/g, '_'),
+    ref: String(p.ref || '').slice(0, 100),
+    name: String(p.name || '').slice(0, 300),
+    frenchName: String(p.frenchName || '').slice(0, 300),
+    category: cat,
+    categoryLabel: String(p.categoryLabel || '').slice(0, 100),
+    brand: String(p.brand || '').slice(0, 100),
+    price: typeof p.price === 'number' && p.price >= 0 ? Math.min(p.price, 1000000) : 0,
+    image: String(p.image || '/src/assets/images/venezia_handbags_collection_1790964461682.jpg').slice(0, 890000),
+    badge: String(p.badge || '').slice(0, 100),
+    sizes: String(p.sizes || '').slice(0, 100),
+    colors: Array.isArray(p.colors)
+      ? p.colors.slice(0, 20).map(c => ({
+          name: String(c?.name || '').slice(0, 60),
+          hex: String(c?.hex || '#1C1917').slice(0, 20)
+        }))
+      : [],
+    origin: String(p.origin || '').slice(0, 100),
+    boxQuantity: String(p.boxQuantity || '').slice(0, 100),
+    description: String(p.description || '').slice(0, 2000),
+    highlights: Array.isArray(p.highlights)
+      ? p.highlights.slice(0, 20).map(h => String(h || '').slice(0, 300))
+      : [],
+    createdAt: existingCreatedAt ?? p.createdAt ?? Date.now()
+  };
+}
+
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Load initial products from localStorage or defaults
-  const [products, setProducts] = useState<Product[]>(() => {
-    try {
-      const saved = localStorage.getItem('venezia_products_v1');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Failed to load products from localStorage', e);
-    }
-    return DEFAULT_PRODUCTS;
-  });
-
-  // Load initial store settings
-  const [settings, setSettings] = useState<StoreSettings>(() => {
-    try {
-      const saved = localStorage.getItem('venezia_settings_v1');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return {
-          ...DEFAULT_SETTINGS,
-          ...parsed,
-          tagline: ''
-        };
-      }
-    } catch (e) {
-      console.error('Failed to load settings from localStorage', e);
-    }
-    return DEFAULT_SETTINGS;
-  });
-
-  // Load initial buttons config
-  const [buttons, setButtons] = useState<SiteButtonsConfig>(() => {
-    try {
-      const saved = localStorage.getItem('venezia_buttons_v1');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Failed to load buttons config from localStorage', e);
-    }
-    return DEFAULT_BUTTONS;
-  });
-
+  const [products, setProducts] = useState<Product[]>([]);
+  const [settings, setSettings] = useState<StoreSettings>(DEFAULT_SETTINGS);
+  const [buttons, setButtons] = useState<SiteButtonsConfig>(DEFAULT_BUTTONS);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Sync to localStorage
+  // Clear legacy localStorage sample products so they never reappear
   useEffect(() => {
     try {
-      localStorage.setItem('venezia_products_v1', JSON.stringify(products));
-    } catch (e) {
-      console.error('Error saving products', e);
+      localStorage.removeItem('venezia_products_v1');
+    } catch {
+      // ignore
     }
-  }, [products]);
+  }, []);
 
+  // Real-time Firestore listener for Products
   useEffect(() => {
-    try {
-      localStorage.setItem('venezia_settings_v1', JSON.stringify(settings));
-    } catch (e) {
-      console.error('Error saving settings', e);
-    }
-  }, [settings]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('venezia_buttons_v1', JSON.stringify(buttons));
-    } catch (e) {
-      console.error('Error saving buttons', e);
-    }
-  }, [buttons]);
-
-  // Product CRUD
-  const addProduct = (newProdData: Omit<Product, 'id'>) => {
-    const newId = 'prod_' + Date.now();
-    const newProduct: Product = {
-      ...newProdData,
-      id: newId
-    };
-    setProducts(prev => [newProduct, ...prev]);
-  };
-
-  const updateProduct = (id: string, updatedFields: Partial<Product>) => {
-    setProducts(prev =>
-      prev.map(p => (p.id === id ? { ...p, ...updatedFields } : p))
+    const productsQuery = query(
+      collection(db, 'products'),
+      where('category', 'in', ['bags', 'sneakers', 'loafers', 'boots'])
     );
-  };
 
-  const deleteProduct = (id: string) => {
-    setProducts(prev => {
-      const next = prev.filter(p => p.id !== id);
-      try {
-        localStorage.setItem('venezia_products_v1', JSON.stringify(next));
-      } catch (e) {
-        console.error('Error persisting products on delete', e);
+    const unsubscribe = onSnapshot(
+      productsQuery,
+      (snapshot) => {
+        const list: Product[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as Product;
+          list.push({
+            ...data,
+            id: docSnap.id
+          });
+        });
+        list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        setProducts(list);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'products');
       }
-      return next;
-    });
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  // Real-time Firestore listener for Store Config (settings & buttons)
+  useEffect(() => {
+    const configRef = doc(db, 'storeConfig', 'main');
+    const unsubscribe = onSnapshot(
+      configRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.settings) {
+            setSettings({
+              ...DEFAULT_SETTINGS,
+              ...data.settings,
+              tagline: ''
+            });
+          }
+          if (data.buttons) {
+            setButtons({
+              ...DEFAULT_BUTTONS,
+              ...data.buttons
+            });
+          }
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'storeConfig/main');
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const persistStoreConfig = async (nextSettings: StoreSettings, nextButtons: SiteButtonsConfig) => {
+    const path = 'storeConfig/main';
+    try {
+      await setDoc(doc(db, 'storeConfig', 'main'), {
+        settings: nextSettings,
+        buttons: nextButtons,
+        updatedAt: Date.now(),
+        initialized: true
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
   };
 
-  // Settings update
-  const updateSettings = (newSettings: Partial<StoreSettings>) => {
-    setSettings(prev => ({ ...prev, ...newSettings }));
+  // Product CRUD backed by Cloud Firestore
+  const addProduct = async (newProdData: Omit<Product, 'id'>) => {
+    const newId = 'prod_' + Date.now() + '_' + Math.floor(100 + Math.random() * 900);
+    const payload = sanitizeProductPayload(newId, newProdData, Date.now());
+    const path = `products/${newId}`;
+    try {
+      await setDoc(doc(db, 'products', newId), payload);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+    }
   };
 
-  // Buttons update
-  const updateButtons = (newButtons: Partial<SiteButtonsConfig>) => {
-    setButtons(prev => ({ ...prev, ...newButtons }));
+  const updateProduct = async (id: string, updatedFields: Partial<Product>) => {
+    const existing = products.find(p => p.id === id);
+    const merged = { ...(existing || {}), ...updatedFields };
+    const payload = sanitizeProductPayload(id, merged, existing?.createdAt);
+    const path = `products/${id}`;
+    try {
+      await setDoc(doc(db, 'products', id), payload);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
   };
 
-  // Reset to original factory defaults
-  const resetToDefaults = () => {
-    setProducts(DEFAULT_PRODUCTS);
+  const deleteProduct = async (id: string) => {
+    const path = `products/${id}`;
+    try {
+      await deleteDoc(doc(db, 'products', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  };
+
+  // Settings update backed by Cloud Firestore
+  const updateSettings = async (newSettings: Partial<StoreSettings>) => {
+    const updated = { ...settings, ...newSettings, tagline: '' };
+    setSettings(updated);
+    await persistStoreConfig(updated, buttons);
+  };
+
+  // Buttons update backed by Cloud Firestore
+  const updateButtons = async (newButtons: Partial<SiteButtonsConfig>) => {
+    const updated = { ...buttons, ...newButtons };
+    setButtons(updated);
+    await persistStoreConfig(settings, updated);
+  };
+
+  // Reset store settings/buttons to defaults and clear all products in Firestore
+  const resetToDefaults = async () => {
+    for (const p of products) {
+      try {
+        await deleteDoc(doc(db, 'products', p.id));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `products/${p.id}`);
+      }
+    }
     setSettings(DEFAULT_SETTINGS);
     setButtons(DEFAULT_BUTTONS);
-    localStorage.removeItem('venezia_products_v1');
-    localStorage.removeItem('venezia_settings_v1');
-    localStorage.removeItem('venezia_buttons_v1');
+    await persistStoreConfig(DEFAULT_SETTINGS, DEFAULT_BUTTONS);
   };
 
   // Backup & Restore
@@ -173,7 +248,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       products,
       settings,
       buttons,
-      version: '1.0',
+      version: '2.0',
       exportDate: new Date().toISOString()
     };
     return JSON.stringify(data, null, 2);
@@ -183,14 +258,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const parsed = JSON.parse(jsonData);
       if (parsed.products && Array.isArray(parsed.products)) {
-        setProducts(parsed.products);
+        parsed.products.forEach((p: Product) => {
+          const id = p.id ? String(p.id).replace(/[^a-zA-Z0-9_-]/g, '_') : 'prod_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+          const payload = sanitizeProductPayload(id, p, p.createdAt);
+          setDoc(doc(db, 'products', id), payload).catch(err =>
+            handleFirestoreError(err, OperationType.WRITE, `products/${id}`)
+          );
+        });
       }
-      if (parsed.settings) {
-        setSettings(prev => ({ ...prev, ...parsed.settings }));
-      }
-      if (parsed.buttons) {
-        setButtons(prev => ({ ...prev, ...parsed.buttons }));
-      }
+      const nextSettings = parsed.settings ? { ...settings, ...parsed.settings, tagline: '' } : settings;
+      const nextButtons = parsed.buttons ? { ...buttons, ...parsed.buttons } : buttons;
+      setSettings(nextSettings);
+      setButtons(nextButtons);
+      persistStoreConfig(nextSettings, nextButtons);
       return true;
     } catch (e) {
       console.error('Failed to import JSON', e);

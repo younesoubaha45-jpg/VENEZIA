@@ -195,20 +195,24 @@ function AppContent() {
         {filteredProducts.length === 0 ? (
           <div className="bg-white rounded-3xl p-10 text-center border border-stone-200/80 my-8 shadow-sm">
             <h3 className="text-base font-bold text-stone-800 mb-1">
-              لا توجد موديلات مطابقة للبحث
+              {products.length === 0 ? 'لا توجد منتوجات مضافة حالياً' : 'لا توجد موديلات مطابقة للبحث'}
             </h3>
             <p className="text-xs text-stone-500 mb-4">
-              يمكنك مسح كلمة البحث أو اختيار تصنيف آخر.
+              {products.length === 0
+                ? 'يمكنك إضافة المنتوجات الجديدة من لوحة التحكم ليراها جميع الزوار مباشرة.'
+                : 'يمكنك مسح كلمة البحث أو اختيار تصنيف آخر.'}
             </p>
-            <button
-              onClick={() => {
-                setSelectedCategory('all');
-                setSearchQuery('');
-              }}
-              className="px-4 py-2 bg-stone-900 text-white rounded-xl text-xs font-semibold hover:bg-stone-800 transition-colors"
-            >
-              عرض جميع المعروضات
-            </button>
+            {(searchQuery || selectedCategory !== 'all') && (
+              <button
+                onClick={() => {
+                  setSelectedCategory('all');
+                  setSearchQuery('');
+                }}
+                className="px-4 py-2 bg-stone-900 text-white rounded-xl text-xs font-semibold hover:bg-stone-800 transition-colors"
+              >
+                عرض جميع المعروضات
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll(['id', 'category', 'image']) &&
+        data.keys().hasOnly([
+          'id', 'ref', 'name', 'frenchName', 'category', 'categoryLabel',
+          'brand', 'price', 'image', 'badge', 'sizes', 'colors',
+          'origin', 'boxQuantity', 'description', 'highlights', 'createdAt'
+        ]) &&
+        data.id is string && data.id.size() >= 1 && data.id.size() <= 128 && data.id.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.category is string && data.category in ['bags', 'sneakers', 'loafers', 'boots'] &&
+        data.image is string && data.image.size() >= 1 && data.image.size() <= 900000 &&
+        (!('ref' in data) || (data.ref is string && data.ref.size() <= 100)) &&
+        (!('name' in data) || (data.name is string && data.name.size() <= 300)) &&
+        (!('frenchName' in data) || (data.frenchName is string && data.frenchName.size() <= 300)) &&
+        (!('categoryLabel' in data) || (data.categoryLabel is string && data.categoryLabel.size() <= 100)) &&
+        (!('brand' in data) || (data.brand is string && data.brand.size() <= 100)) &&
+        (!('price' in data) || (data.price is number && data.price >= 0 && data.price <= 1000000)) &&
+        (!('badge' in data) || (data.badge is string && data.badge.size() <= 100)) &&
+        (!('sizes' in data) || (data.sizes is string && data.sizes.size() <= 100)) &&
+        (!('origin' in data) || (data.origin is string && data.origin.size() <= 100)) &&
+        (!('boxQuantity' in data) || (data.boxQuantity is string && data.boxQuantity.size() <= 100)) &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+        (!('colors' in data) || (data.colors is list && data.colors.size() <= 20 && (data.colors.size() == 0 || data.colors[0] is map))) &&
+        (!('highlights' in data) || (data.highlights is list && data.highlights.size() <= 20 && (data.highlights.size() == 0 || (data.highlights[0] is string && data.highlights[0].size() <= 300)))) &&
+        (!('createdAt' in data) || (data.createdAt is number && data.createdAt >= 0));
+    }
+
+    function isValidStoreState(data) {
+      return data.keys().hasAll(['settings', 'buttons', 'updatedAt']) &&
+        data.keys().hasOnly(['settings', 'buttons', 'updatedAt', 'initialized']) &&
+        data.settings is map &&
+        data.buttons is map &&
+        data.updatedAt is number &&
+        (!('initialized' in data) || data.initialized is bool);
+    }
+
+    match /test/{docId} {
+      allow get: if isValidId(docId);
+    }
+
+    match /products/{productId} {
+      allow get: if isValidId(productId);
+      allow list: if resource.data.category in ['bags', 'sneakers', 'loafers', 'boots'];
+      allow create: if isValidId(productId) && isValidProduct(incoming()) && incoming().id == productId;
+      allow update: if isValidId(productId) && isValidProduct(incoming()) && incoming().id == existing().id &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'ref', 'name', 'frenchName', 'category', 'categoryLabel',
+          'brand', 'price', 'image', 'badge', 'sizes', 'colors',
+          'origin', 'boxQuantity', 'description', 'highlights', 'createdAt'
+        ]);
+      allow delete: if isValidId(productId);
+    }
+
+    match /storeConfig/{configId} {
+      allow get: if isValidId(configId);
+      allow create: if isValidId(configId) && isValidStoreState(incoming());
+      allow update: if isValidId(configId) && isValidStoreState(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['settings', 'buttons', 'updatedAt', 'initialized']);
+    }
+  }
+}

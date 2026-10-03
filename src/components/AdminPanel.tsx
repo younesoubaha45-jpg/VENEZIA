@@ -97,14 +97,38 @@ export default function AdminPanel() {
     setTimeout(() => setSaveSuccessMsg(null), 3000);
   };
 
-  // Image file upload handler
+  // Image file upload handler with automatic compression for fast cloud storage
   const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
         if (typeof reader.result === 'string') {
-          setProductForm(prev => ({ ...prev, image: reader.result as string }));
+          const img = new Image();
+          img.onload = () => {
+            const MAX_SIZE = 900;
+            let width = img.width;
+            let height = img.height;
+            if (width > height && width > MAX_SIZE) {
+              height = Math.round((height * MAX_SIZE) / width);
+              width = MAX_SIZE;
+            } else if (height > MAX_SIZE) {
+              width = Math.round((width * MAX_SIZE) / height);
+              height = MAX_SIZE;
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.78);
+              setProductForm(prev => ({ ...prev, image: compressedDataUrl }));
+            } else {
+              setProductForm(prev => ({ ...prev, image: reader.result as string }));
+            }
+          };
+          img.src = reader.result;
         }
       };
       reader.readAsDataURL(file);
