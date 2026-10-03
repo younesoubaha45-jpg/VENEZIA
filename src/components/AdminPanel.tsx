@@ -255,14 +255,6 @@ export default function AdminPanel() {
             <span className="w-8 h-8 rounded-lg bg-amber-500 text-stone-950 flex items-center justify-center font-bold text-sm">
               ⚙️
             </span>
-            <div>
-              <h2 className="text-base sm:text-lg font-bold">
-                لوحة التحكم الشاملة · {settings.nameAr}
-              </h2>
-              <p className="text-xs text-stone-400">
-                التحكم الكامل في المنتوجات، الأزرار، التعديلات، الحذف ومعلومات المحل
-              </p>
-            </div>
           </div>
 
           <div className="flex items-center gap-2">
