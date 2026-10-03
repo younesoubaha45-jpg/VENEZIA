@@ -1,0 +1,6 @@
+{
+  "name": "أحذية فينيزيا - VENEZIA Shoes",
+  "description": "معرض أحذية فينيزيا VENEZIA Shoes لبيع أرقى الحقائب والأحذية النسائية العصرية، كودبار إنستغرام وواتساب ومعلومات التواصل - الدار البيضاء.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
